@@ -1,4 +1,4 @@
-# ROGAL — IR Signal Manager
+# first project kinda nervous
 
 Record IR signals from any remote control and replay them on demand.  
 Built for **M5StickC Plus 2**.
