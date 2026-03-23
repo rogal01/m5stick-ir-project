@@ -45,11 +45,15 @@ Connect the IR receiver to the **Grove Port A** connector on the M5StickC Plus 2
 
 ## Features
 
-- **10 IR signal storage slots** — record and store up to 10 remote signals
+- **20 IR signal storage slots** — record and store up to 20 remote signals (paged view, 10 per page)
+- **NVS persistence** — all settings and recorded IR signals survive reboots (saved to flash)
+- **Main menu** — new hub screen with IR Remote, Clock, and Settings entries
+- **Full-screen clock** — large time display with seconds, date, day of week, battery, and adjustable hour/minute offset
+- **TV presets database** — load pre-built IR codes for popular TV brands straight into slots
 - **Protocol-aware sending** — supports NEC, Sony, Samsung, RC5, RC6, LG, Panasonic, and 50+ more
-- **Strong signal** — sends 5 repeat bursts by default (configurable 1–10×) for maximum reliability
+- **Strong signal** — sends 50 repeat bursts by default (configurable 1–50×) for maximum reliability
 - **4 color themes** — Purple, Green, Blue, Red — changeable in Settings
-- **Clock & date** — syncs via WiFi/NTP on boot (optional), shown on status bar
+- **Clock & date** — syncs via WiFi/NTP on boot (optional), shown on status bar with adjustable offset
 - **Battery indicator** — shown on status bar
 - **Welcome screen** — "ROGAL" branded splash with battery, time and date
 - **Auto power-off** — configurable timeout (0–30 min)
@@ -59,29 +63,48 @@ Connect the IR receiver to the **Grove Port A** connector on the M5StickC Plus 2
 
 ## Controls
 
-### Slots Screen (main view)
+### Main Menu
+
+| Button        | Action                          |
+|---------------|---------------------------------|
+| A short       | Move selection up                |
+| B short       | Select highlighted item          |
+| P (power)     | Move selection down              |
+
+### Slots Screen (IR Remote)
 
 | Button        | Action                                     |
 |---------------|--------------------------------------------|
-| A short       | Previous slot                              |
-| A hold (2s)   | Open Settings                              |
-| B short       | **Send** (if stored) / **Record** (if empty) |
-| B hold (1s)   | Next slot                                  |
+| B short       | Previous slot                              |
+| B hold        | Back to Main Menu                          |
+| A short       | **Send** (if stored) / **Record** (if empty) |
+| P short       | Next slot                                  |
 | A or B (while recording) | Cancel recording                |
+
+### Clock Screen
+
+| Button        | Action                          |
+|---------------|---------------------------------|
+| B short       | Toggle hour/minute edit mode     |
+| B hold        | Back to Main Menu                |
+| A short       | Decrease offset (hour or minute) |
+| P short       | Increase offset (hour or minute) |
 
 ### Settings Screen
 
 | Button        | Action                          |
 |---------------|---------------------------------|
-| A short       | Decrease selected value         |
-| A hold (1s)   | Select next setting row         |
-| B short       | Increase selected value         |
-| B hold (1.5s) | Back to Slots                   |
+| B short       | Decrease selected value          |
+| A short       | Increase selected value          |
+| A hold        | Back to Main Menu                |
+| P short       | Next setting row                 |
 
 **Settings available:**
-- **Repeats** (1–10×) — how many times to send the signal per press
+- **Repeats** (1–50×) — how many times to send the signal per press
 - **Auto-Off** (0–30 min) — idle timeout before power-off (0 = never)
 - **Theme** — Purple / Green / Blue / Red
+- **Clock Offset** — adjustable hour offset (−12 to +12) for the clock display
+- **TV Presets** — load pre-built IR codes for popular TV brands
 
 ---
 
@@ -105,14 +128,18 @@ Connect the IR receiver to the **Grove Port A** connector on the M5StickC Plus 2
 
 ## How to Use
 
-1. **Power on** — welcome screen shows battery % and time (if WiFi configured)
-2. **Press any button** to enter Slots view
-3. **Navigate** to an empty slot with A (previous) / hold B (next)
-4. **Press B** on an empty slot to start recording
-5. **Aim your remote** at the IR receiver and press a button on the remote
-6. The signal is captured, decoded, and stored — screen shows "SAVED"
-7. **Press B** on a stored slot to replay the signal (IR LED fires 5× by default)
-8. **Hold A** to open Settings and customize repeats, auto-off, or theme color
+1. **Power on** — welcome screen shows battery %, time, and date (if WiFi configured)
+2. **Press any button** to enter the Main Menu
+3. Select **IR Remote** to open the slots view
+4. **Navigate** to an empty slot with B (previous) / P (next)
+5. **Press A** on an empty slot to start recording
+6. **Aim your remote** at the IR receiver and press a button on the remote
+7. The signal is captured, decoded, and stored in flash — screen shows "SAVED"
+8. **Press A** on a stored slot to replay the signal (IR LED fires 50× by default)
+9. Select **Clock** from the menu for a full-screen clock with adjustable offset
+10. Select **Settings** to customize repeats, auto-off, theme, clock offset, or load TV presets
+
+All settings and recorded IR signals are **saved to flash** and persist across reboots.
 
 ---
 
@@ -135,6 +162,7 @@ Connect the IR receiver to the **Grove Port A** connector on the M5StickC Plus 2
 - **IR TX:** GPIO 19 (built-in LED, 38 kHz carrier)
 - **IR RX:** GPIO 33 (external receiver on Grove Port A)
 - **IR Library:** IRremoteESP8266 v2.9.0
+- **Storage:** ESP32 NVS (Preferences) — settings and IR signals persist across reboots
 - **Timezone:** CET/CEST via POSIX TZ string + NTP
 
 ---
@@ -144,5 +172,6 @@ Connect the IR receiver to the **Grove Port A** connector on the M5StickC Plus 2
 Private project.
 
 ## Libraries Used
-- M5StickCPlus2 - Device support
-- IRremoteESP8266 - IR sending and receiving
+- M5StickCPlus2 — Device support
+- IRremoteESP8266 — IR sending and receiving
+- Preferences (ESP32 NVS) — Persistent settings and signal storage

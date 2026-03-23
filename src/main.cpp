@@ -19,6 +19,7 @@
 #include <IRsend.h>
 #include <IRutils.h>
 #include <WiFi.h>
+#include <Preferences.h>
 
 // ==================== USER CONFIG ====================
 const char* WIFI_SSID = "";   // Your WiFi SSID (leave "" to skip time sync)
@@ -34,7 +35,7 @@ IRsend irsend(IR_TX);
 decode_results results;
 
 // ==================== SIGNAL STORAGE ====================
-const int NUM_SLOTS = 10;
+const int NUM_SLOTS = 20;
 struct IrSlot {
   uint64_t   code;
   uint16_t   bits;
@@ -46,18 +47,24 @@ int  currentSlot = 0;
 bool recording   = false;
 
 // ==================== SETTINGS ====================
-int repeatCount    = 50;  // strong default: 50 bursts per send
-int autoOffMinutes = 5;
-int themeIdx       = 0;
+int repeatCount     = 50;  // strong default: 50 bursts per send
+int autoOffMinutes  = 5;
+int themeIdx        = 0;
+int clockHourOffset = 0;   // adjustable hour offset for clock (-12 to +12)
+int clockMinuteOffset = 0; // adjustable minute offset for clock (-59 to +59)
 
 // ==================== APP STATE ====================
-enum Screen { SCR_WELCOME, SCR_SLOTS, SCR_SETTINGS, SCR_PRESETS };
+enum Screen { SCR_WELCOME, SCR_MENU, SCR_SLOTS, SCR_CLOCK, SCR_SETTINGS, SCR_PRESETS };
 Screen screen       = SCR_WELCOME;
+int    menuSel      = 0;          // which menu row is selected
 int    settingSel   = 0;          // which setting row is selected
-unsigned long lastActivity  = 0;
-unsigned long welcomeStart  = 0;
+unsigned long lastActivity    = 0;
+unsigned long welcomeStart    = 0;
 unsigned long lastClockUpdate = 0;
+unsigned long lastClockDraw   = 0;
+int    clockEditMode = 0;      // 0=hour, 1=minute editing on clock screen
 bool   hasTime      = false;
+Preferences prefs;
 
 // ==================== BUTTON TRACKER ====================
 // Fires SHORT on release (only if threshold not reached).
@@ -135,6 +142,78 @@ void drawButtonBar(const char* content, const char* right = nullptr) {
     M5.Lcd.setCursor(240 - (int)strlen(right) * 6 - 2, 124);
     M5.Lcd.print(right);
   }
+}
+
+// ==================== NVS PERSISTENCE ====================
+void saveSettings() {
+  if (!prefs.begin("rogal", false)) {
+    Serial.println("[NVS] ERROR: failed to open namespace");
+    return;
+  }
+  prefs.putInt("repeat", repeatCount);
+  prefs.putInt("autoOff", autoOffMinutes);
+  prefs.putInt("theme", themeIdx);
+  prefs.putInt("clockOff", clockHourOffset);
+  prefs.putInt("clockMinOff", clockMinuteOffset);
+  prefs.end();
+  Serial.printf("[NVS] Saved: rep=%d off=%d theme=%d hOff=%d mOff=%d\n",
+                repeatCount, autoOffMinutes, themeIdx, clockHourOffset, clockMinuteOffset);
+}
+
+void loadSettings() {
+  if (!prefs.begin("rogal", false)) {
+    Serial.println("[NVS] ERROR: failed to open for load");
+    return;
+  }
+  repeatCount       = prefs.getInt("repeat", 50);
+  autoOffMinutes    = prefs.getInt("autoOff", 5);
+  themeIdx          = prefs.getInt("theme", 0);
+  clockHourOffset   = prefs.getInt("clockOff", 0);
+  clockMinuteOffset = prefs.getInt("clockMinOff", 0);
+  prefs.end();
+  repeatCount       = constrain(repeatCount, 1, 50);
+  autoOffMinutes    = constrain(autoOffMinutes, 0, 30);
+  themeIdx          = constrain(themeIdx, 0, NUM_THEMES - 1);
+  clockHourOffset   = constrain(clockHourOffset, -12, 12);
+  clockMinuteOffset = constrain(clockMinuteOffset, -59, 59);
+  Serial.printf("[NVS] Loaded: rep=%d off=%d theme=%d hOff=%d mOff=%d\n",
+                repeatCount, autoOffMinutes, themeIdx, clockHourOffset, clockMinuteOffset);
+}
+
+void saveSlot(int idx) {
+  if (idx < 0 || idx >= NUM_SLOTS) return;
+  prefs.begin("rogal", false);
+  char key[12];
+  snprintf(key, sizeof(key), "s%d_code", idx);
+  prefs.putULong64(key, slots[idx].code);
+  snprintf(key, sizeof(key), "s%d_bits", idx);
+  prefs.putUShort(key, slots[idx].bits);
+  snprintf(key, sizeof(key), "s%d_proto", idx);
+  prefs.putInt(key, (int)slots[idx].proto);
+  snprintf(key, sizeof(key), "s%d_occ", idx);
+  prefs.putBool(key, slots[idx].occupied);
+  prefs.end();
+}
+
+void loadSlots() {
+  prefs.begin("rogal", true);
+  for (int i = 0; i < NUM_SLOTS; i++) {
+    char key[12];
+    snprintf(key, sizeof(key), "s%d_occ", i);
+    slots[i].occupied = prefs.getBool(key, false);
+    if (slots[i].occupied) {
+      snprintf(key, sizeof(key), "s%d_code", i);
+      slots[i].code = prefs.getULong64(key, 0);
+      snprintf(key, sizeof(key), "s%d_bits", i);
+      slots[i].bits = prefs.getUShort(key, 0);
+      snprintf(key, sizeof(key), "s%d_proto", i);
+      slots[i].proto = (decode_type_t)prefs.getInt(key, 0);
+    }
+  }
+  prefs.end();
+  int loaded = 0;
+  for (int i = 0; i < NUM_SLOTS; i++) if (slots[i].occupied) loaded++;
+  Serial.printf("[NVS] Loaded %d/%d slots\n", loaded, NUM_SLOTS);
 }
 
 // ==================== TV PRESETS DATABASE ====================
@@ -246,8 +325,12 @@ void drawStatusBar() {
   if (hasTime) {
     struct tm ti;
     if (getLocalTime(&ti, 0)) {
+      int totalMin = ti.tm_hour * 60 + ti.tm_min + clockHourOffset * 60 + clockMinuteOffset;
+      while (totalMin < 0) totalMin += 1440;
+      totalMin %= 1440;
+      int adjH = totalMin / 60, adjM = totalMin % 60;
       char buf[18];
-      snprintf(buf, sizeof(buf), "%02d:%02d %02d/%02d", ti.tm_hour, ti.tm_min, ti.tm_mday, ti.tm_mon + 1);
+      snprintf(buf, sizeof(buf), "%02d:%02d %02d/%02d", adjH, adjM, ti.tm_mday, ti.tm_mon + 1);
       M5.Lcd.setTextColor(WHITE);
       M5.Lcd.setCursor(85, 4);
       M5.Lcd.print(buf);
@@ -319,15 +402,19 @@ void showWelcome() {
   char info[36];
   if (hasTime) {
     struct tm ti; getLocalTime(&ti, 0);
+    int totalMin = ti.tm_hour * 60 + ti.tm_min + clockHourOffset * 60 + clockMinuteOffset;
+    while (totalMin < 0) totalMin += 1440;
+    totalMin %= 1440;
+    int adjH = totalMin / 60, adjM = totalMin % 60;
     snprintf(info, sizeof(info), "%02d:%02d  %02d/%02d/%04d  %d%%",
-             ti.tm_hour, ti.tm_min, ti.tm_mday, ti.tm_mon + 1, ti.tm_year + 1900, pct);
+             adjH, adjM, ti.tm_mday, ti.tm_mon + 1, ti.tm_year + 1900, pct);
   } else {
     snprintf(info, sizeof(info), "BAT %d%%", pct);
   }
   drawCentered(74, info, T().value);
   // Version
   delay(30);
-  drawCentered(92, "v2.0.0", T().muted);
+  drawCentered(92, "v3.1.0", T().muted);
   // Bottom accent sweep
   for (int i = 0; i <= 120; i += 6) {
     M5.Lcd.drawFastHLine(120 - i, 108, i * 2, T().primary);
@@ -338,16 +425,70 @@ void showWelcome() {
   drawCentered(118, "Press any button...", T().secondary);
 }
 
+// ==================== MENU SCREEN ====================
+void showMenu() {
+  M5.Lcd.fillScreen(BLACK);
+  drawStatusBar();
+  M5.Lcd.setTextSize(1);
+  M5.Lcd.setTextColor(T().primary);
+  M5.Lcd.setCursor(6, 22);
+  M5.Lcd.print("MAIN MENU");
+  M5.Lcd.drawFastHLine(0, 33, 240, T().muted);
+  const char* items[] = {"IR Remote", "Clock", "Settings"};
+  for (int i = 0; i < 3; i++) {
+    int y = 38 + i * 26;
+    bool sel = (i == menuSel);
+    if (sel) {
+      M5.Lcd.fillRect(0, y, 240, 24, T().bar);
+      M5.Lcd.fillRect(0, y, 3, 24, T().primary);
+    }
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.setCursor(12, y + 4);
+    M5.Lcd.setTextColor(sel ? WHITE : T().secondary);
+    M5.Lcd.print(items[i]);
+    M5.Lcd.setTextSize(1);
+    if (i == 0) {
+      int occ = 0;
+      for (int j = 0; j < NUM_SLOTS; j++) if (slots[j].occupied) occ++;
+      char info[8];
+      snprintf(info, sizeof(info), "%d/%d", occ, NUM_SLOTS);
+      M5.Lcd.setCursor(204, y + 8);
+      M5.Lcd.setTextColor(sel ? T().value : T().muted);
+      M5.Lcd.print(info);
+    } else if (i == 1 && hasTime) {
+      struct tm ti; getLocalTime(&ti, 0);
+      int totalMin = ti.tm_hour * 60 + ti.tm_min + clockHourOffset * 60 + clockMinuteOffset;
+      while (totalMin < 0) totalMin += 1440;
+      totalMin %= 1440;
+      int adjH = totalMin / 60, adjM = totalMin % 60;
+      char tb[6];
+      snprintf(tb, sizeof(tb), "%02d:%02d", adjH, adjM);
+      M5.Lcd.setCursor(204, y + 8);
+      M5.Lcd.setTextColor(sel ? T().value : T().muted);
+      M5.Lcd.print(tb);
+    } else if (i == 2) {
+      M5.Lcd.setCursor(228, y + 8);
+      M5.Lcd.setTextColor(sel ? T().value : T().muted);
+      M5.Lcd.print(">");
+    }
+  }
+  drawButtonBar("B:Up A:Select P:Down");
+}
+
 void showSlots() {
   M5.Lcd.fillScreen(BLACK);
   drawStatusBar();
   M5.Lcd.setTextSize(1);
-  // ── Horizontal slot bar ──
+  // ── Horizontal slot bar (paged, 10 per page) ──
+  int page = currentSlot / 10;
+  int pageStart = page * 10;
+  int pageEnd = min(pageStart + 10, NUM_SLOTS);
+  int pageCount = pageEnd - pageStart;
   const int slotW = 19, slotGap = 2;
-  int totalW = NUM_SLOTS * slotW + (NUM_SLOTS - 1) * slotGap;
+  int totalW = pageCount * slotW + (pageCount - 1) * slotGap;
   int sX = (240 - totalW) / 2;
-  for (int i = 0; i < NUM_SLOTS; i++) {
-    int x = sX + i * (slotW + slotGap);
+  for (int i = pageStart; i < pageEnd; i++) {
+    int x = sX + (i - pageStart) * (slotW + slotGap);
     if (i == currentSlot) {
       M5.Lcd.fillRoundRect(x, 20, slotW, 10, 2, T().primary);
       M5.Lcd.setTextColor(BLACK);
@@ -358,6 +499,14 @@ void showSlots() {
     } else {
       M5.Lcd.drawRoundRect(x, 20, slotW, 10, 2, T().muted);
     }
+  }
+  // Page indicator
+  if (NUM_SLOTS > 10) {
+    M5.Lcd.setTextColor(T().muted);
+    M5.Lcd.setCursor(224, 22);
+    M5.Lcd.print(page + 1);
+    M5.Lcd.print("/");
+    M5.Lcd.print((NUM_SLOTS + 9) / 10);
   }
   M5.Lcd.drawFastHLine(0, 34, 240, T().muted);
   // ── Content area ──
@@ -425,13 +574,60 @@ void showSlots() {
   if (recording) {
     drawButtonBar("A/B: Cancel");
   } else {
-    drawButtonBar(slots[currentSlot].occupied ? "A:Prev B:Send P:Next" : "A:Prev B:Rec P:Next");
-    drawGear(215, 127, T().value);
-    M5.Lcd.setTextSize(1);
-    M5.Lcd.setTextColor(T().muted);
-    M5.Lcd.setCursor(222, 124);
-    M5.Lcd.print("hA");
+    drawButtonBar(slots[currentSlot].occupied ? "B:Prev A:Send P:Next" : "B:Prev A:Rec P:Next", "hB:Menu");
   }
+}
+
+// ==================== FULL-SCREEN CLOCK ====================
+void updateClockDisplay(bool full) {
+  if (!hasTime) {
+    if (full) {
+      drawCentered(40, "NO TIME SET", T().muted, 2);
+      drawButtonBar("B:Back");
+    }
+    return;
+  }
+  struct tm ti;
+  getLocalTime(&ti, 0);
+  int totalMin = ti.tm_hour * 60 + ti.tm_min + clockHourOffset * 60 + clockMinuteOffset;
+  while (totalMin < 0) totalMin += 1440;
+  totalMin %= 1440;
+  int adjH = totalMin / 60, adjM = totalMin % 60;
+  // Time area — clear and redraw
+  M5.Lcd.fillRect(0, 8, 240, 44, BLACK);
+  char timeBuf[6];
+  snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d", adjH, adjM);
+  drawCentered(12, timeBuf, T().primary, 4);
+  // Seconds
+  char secBuf[4];
+  snprintf(secBuf, sizeof(secBuf), ":%02d", ti.tm_sec);
+  M5.Lcd.setTextSize(2);
+  M5.Lcd.setTextColor(T().muted);
+  M5.Lcd.setCursor(182, 30);
+  M5.Lcd.print(secBuf);
+  if (full) {
+    M5.Lcd.drawFastHLine(20, 56, 200, T().muted);
+    const char* days[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
+    char dateBuf[24];
+    snprintf(dateBuf, sizeof(dateBuf), "%s  %02d/%02d/%04d", days[ti.tm_wday], ti.tm_mday, ti.tm_mon+1, ti.tm_year+1900);
+    drawCentered(64, dateBuf, T().secondary);
+    int pct = M5.Power.getBatteryLevel();
+    bool charging = M5.Power.isCharging();
+    char batBuf[16];
+    snprintf(batBuf, sizeof(batBuf), charging ? "CHG %d%%" : "BAT %d%%", pct);
+    drawCentered(82, batBuf, pct > 20 ? T().value : 0xF800);
+    char offBuf[32];
+    snprintf(offBuf, sizeof(offBuf), "Offset: %+dh %+dm", clockHourOffset, clockMinuteOffset);
+    drawCentered(92, offBuf, T().muted);
+    drawCentered(104, clockEditMode == 0 ? "[HOUR]" : "[MIN]", T().value);
+    drawButtonBar("B:-  A:H/M  P:+", "hA:Back");
+  }
+}
+
+void showClock() {
+  M5.Lcd.fillScreen(BLACK);
+  lastClockDraw = millis();
+  updateClockDisplay(true);
 }
 
 void showSettings() {
@@ -442,35 +638,37 @@ void showSettings() {
   M5.Lcd.setCursor(6, 22);
   M5.Lcd.print("SETTINGS");
   M5.Lcd.drawFastHLine(0, 33, 240, T().muted);
-  const char* labels[] = {"Repeats", "Auto-Off", "Theme", "TV Presets"};
+  const int NUM_SETTINGS = 5;
+  const char* labels[] = {"Repeats", "Auto-Off", "Theme", "Clock Offset", "TV Presets"};
   char val[20];
-  for (int i = 0; i < 4; i++) {
-    int y = 37 + i * 20;
+  for (int i = 0; i < NUM_SETTINGS; i++) {
+    int y = 37 + i * 17;
     bool sel = (i == settingSel);
     if (sel) {
-      M5.Lcd.fillRect(0, y, 240, 18, T().bar);
-      M5.Lcd.fillRect(0, y, 3, 18, T().primary);
+      M5.Lcd.fillRect(0, y, 240, 15, T().bar);
+      M5.Lcd.fillRect(0, y, 3, 15, T().primary);
     }
-    M5.Lcd.setCursor(8, y + 5);
+    M5.Lcd.setCursor(8, y + 4);
     M5.Lcd.setTextColor(sel ? WHITE : T().muted);
     M5.Lcd.print(labels[i]);
     if (i == 0) snprintf(val, sizeof(val), "%dx", repeatCount);
     else if (i == 1) snprintf(val, sizeof(val), "%d min", autoOffMinutes);
     else if (i == 2) snprintf(val, sizeof(val), "%s", THEMES[themeIdx].name);
+    else if (i == 3) snprintf(val, sizeof(val), "%+dh %+dm", clockHourOffset, clockMinuteOffset);
     else snprintf(val, sizeof(val), ">");
     int vx = 228 - (int)strlen(val) * 6;
-    M5.Lcd.setCursor(vx, y + 5);
+    M5.Lcd.setCursor(vx, y + 4);
     M5.Lcd.setTextColor(sel ? T().value : T().secondary);
     M5.Lcd.print(val);
-    if (sel && i < 3) {
+    if (sel && i < 4) {
       M5.Lcd.setTextColor(T().muted);
-      M5.Lcd.setCursor(vx - 12, y + 5);
+      M5.Lcd.setCursor(vx - 12, y + 4);
       M5.Lcd.print("<");
-      M5.Lcd.setCursor(vx + (int)strlen(val) * 6 + 4, y + 5);
+      M5.Lcd.setCursor(vx + (int)strlen(val) * 6 + 4, y + 4);
       M5.Lcd.print(">");
     }
   }
-  drawButtonBar("A:- B:+ P:Row", "hB:Back");
+  drawButtonBar("B:- A:+ P:Row", "hA:Back");
 }
 
 // ==================== TV PRESETS SCREEN ====================
@@ -531,7 +729,7 @@ void showPresets() {
   M5.Lcd.setTextColor(T().muted);
   M5.Lcd.setCursor(6, 114);
   M5.Lcd.print(info);
-  drawButtonBar("A/P:Brand B:Pos", "hB:Load");
+  drawButtonBar("B/P:Brand A:Pos", "hA:Load");
 }
 
 // ==================== IR ACTIONS ====================
@@ -588,6 +786,7 @@ void onSignalReceived() {
   slots[currentSlot].bits     = results.bits;
   slots[currentSlot].proto    = results.decode_type;
   slots[currentSlot].occupied = true;
+  saveSlot(currentSlot);
   recording = false;
   Serial.print("[RX] ");
   Serial.print(typeToString(results.decode_type));
@@ -699,6 +898,8 @@ void setup() {
   M5.Lcd.fillScreen(BLACK);
   Serial.println("\n=== ROGAL IR Signal Manager ===");
   for (int i = 0; i < NUM_SLOTS; i++) slots[i] = {};
+  loadSettings();
+  loadSlots();
   syncTime();
   irrecv.enableIRIn();
   pinMode(IR_RX, INPUT_PULLDOWN);  // pull-down for receiver detection
@@ -714,8 +915,63 @@ void setup() {
 void handleWelcome() {
   if (millis() - welcomeStart > 5000 || M5.BtnA.isPressed() || M5.BtnB.isPressed()) {
     lastActivity = millis();
-    screen = SCR_SLOTS;
-    showSlots();
+    screen = SCR_MENU;
+    menuSel = 0;
+    showMenu();
+  }
+}
+
+void handleMenu(BtnEvt eA, BtnEvt eB, BtnEvt eP) {
+  if (eA == BTN_SHORT) {
+    lastActivity = millis();
+    menuSel = (menuSel - 1 + 3) % 3;
+    showMenu();
+    return;
+  }
+  if (eP == BTN_SHORT) {
+    lastActivity = millis();
+    menuSel = (menuSel + 1) % 3;
+    showMenu();
+    return;
+  }
+  if (eB == BTN_SHORT) {
+    lastActivity = millis();
+    if (menuSel == 0)      { screen = SCR_SLOTS; showSlots(); }
+    else if (menuSel == 1) { screen = SCR_CLOCK; showClock(); }
+    else                   { screen = SCR_SETTINGS; settingSel = 0; showSettings(); }
+    return;
+  }
+}
+
+void handleClock(BtnEvt eA, BtnEvt eB, BtnEvt eP) {
+  if (eB == BTN_LONG || (eB == BTN_SHORT && !hasTime)) {
+    lastActivity = millis();
+    clockEditMode = 0;
+    screen = SCR_MENU;
+    showMenu();
+    return;
+  }
+  if (eB == BTN_SHORT) {
+    lastActivity = millis();
+    clockEditMode = 1 - clockEditMode;
+    showClock();
+    return;
+  }
+  if (eA == BTN_SHORT) {
+    lastActivity = millis();
+    if (clockEditMode == 0) clockHourOffset = max(-12, clockHourOffset - 1);
+    else clockMinuteOffset = max(-59, clockMinuteOffset - 1);
+    saveSettings();
+    showClock();
+    return;
+  }
+  if (eP == BTN_SHORT) {
+    lastActivity = millis();
+    if (clockEditMode == 0) clockHourOffset = min(12, clockHourOffset + 1);
+    else clockMinuteOffset = min(59, clockMinuteOffset + 1);
+    saveSettings();
+    showClock();
+    return;
   }
 }
 
@@ -754,9 +1010,9 @@ void handleSlots(BtnEvt eA, BtnEvt eB, BtnEvt eP) {
   if (eA == BTN_LONG) {
     recording = false;
     lastActivity = millis();
-    screen = SCR_SETTINGS;
-    settingSel = 0;
-    showSettings();
+    screen = SCR_MENU;
+    menuSel = 0;
+    showMenu();
     return;
   }
   if (eA == BTN_SHORT) {
@@ -769,39 +1025,43 @@ void handleSlots(BtnEvt eA, BtnEvt eB, BtnEvt eP) {
 }
 
 void handleSettings(BtnEvt eA, BtnEvt eB, BtnEvt eP) {
+  const int NUM_SETTINGS = 5;
   // --- Power button: next row ---
   if (eP == BTN_SHORT) {
     lastActivity = millis();
-    settingSel = (settingSel + 1) % 4;
+    settingSel = (settingSel + 1) % NUM_SETTINGS;
     showSettings();
     return;
   }
   if (eB == BTN_LONG) {
     lastActivity = millis();
-    screen = SCR_SLOTS;
-    showSlots();
+    saveSettings();
+    screen = SCR_MENU;
+    showMenu();
     return;
   }
   if (eB == BTN_SHORT) {
     lastActivity = millis();
-    if (settingSel == 0) repeatCount = min(50, repeatCount + 1);
+    if (settingSel == 0)      repeatCount = min(50, repeatCount + 1);
     else if (settingSel == 1) autoOffMinutes = min(30, autoOffMinutes + 1);
     else if (settingSel == 2) themeIdx = (themeIdx + 1) % NUM_THEMES;
+    else if (settingSel == 3) clockHourOffset = min(12, clockHourOffset + 1);
     else { screen = SCR_PRESETS; presetBrandIdx = 0; presetScroll = 0; showPresets(); return; }
     showSettings();
     return;
   }
   if (eA == BTN_LONG) {
     lastActivity = millis();
-    settingSel = (settingSel + 1) % 4;
+    settingSel = (settingSel + 1) % NUM_SETTINGS;
     showSettings();
     return;
   }
   if (eA == BTN_SHORT) {
     lastActivity = millis();
-    if (settingSel == 0) repeatCount = max(1, repeatCount - 1);
+    if (settingSel == 0)      repeatCount = max(1, repeatCount - 1);
     else if (settingSel == 1) autoOffMinutes = max(0, autoOffMinutes - 1);
     else if (settingSel == 2) themeIdx = (themeIdx - 1 + NUM_THEMES) % NUM_THEMES;
+    else if (settingSel == 3) clockHourOffset = max(-12, clockHourOffset - 1);
     showSettings();
     return;
   }
@@ -832,6 +1092,7 @@ void handlePresets(BtnEvt eA, BtnEvt eB, BtnEvt eP) {
       slots[si].bits     = brand.codes[i].bits;
       slots[si].proto    = brand.codes[i].proto;
       slots[si].occupied = true;
+      saveSlot(si);
     }
     M5.Lcd.fillScreen(BLACK);
     M5.Lcd.drawRect(10, 3, 220, 114, T().primary);
@@ -892,22 +1153,30 @@ void loop() {
     M5.Power.powerOff();
   }
 
-  // Refresh clock every 30s on main screens
-  if ((screen == SCR_SLOTS || screen == SCR_SETTINGS || screen == SCR_PRESETS) && millis() - lastClockUpdate >= 30000) {
+  // Refresh clock every 30s on screens with status bar
+  if ((screen == SCR_MENU || screen == SCR_SLOTS || screen == SCR_SETTINGS || screen == SCR_PRESETS) && millis() - lastClockUpdate >= 30000) {
     lastClockUpdate = millis();
     drawStatusBar();
   }
 
+  // Live-update full-screen clock every second
+  if (screen == SCR_CLOCK && millis() - lastClockDraw >= 1000) {
+    lastClockDraw = millis();
+    updateClockDisplay(false);
+  }
+
   // Read buttons (clean: short fires on release, long fires once on threshold)
-  BtnEvt eA = checkBtn(tA, M5.BtnA.isPressed(), (screen == SCR_SETTINGS || screen == SCR_PRESETS) ? 1000 : 2000);
-  BtnEvt eB = checkBtn(tB, M5.BtnB.isPressed(), (screen == SCR_SETTINGS || screen == SCR_PRESETS) ? 1500 : 1000);
-  BtnEvt eP = checkBtn(tP, M5.BtnPWR.isPressed(), 3000);  // long threshold high so short press always fires
+  BtnEvt eA = checkBtn(tA, M5.BtnA.isPressed(), (screen == SCR_SETTINGS || screen == SCR_PRESETS) ? 1500 : 1000);
+  BtnEvt eB = checkBtn(tB, M5.BtnB.isPressed(), 3000);
+  BtnEvt eP = checkBtn(tP, M5.BtnPWR.isPressed(), (screen == SCR_SETTINGS || screen == SCR_PRESETS) ? 1000 : 2000);
 
   switch (screen) {
     case SCR_WELCOME:  handleWelcome(); break;
-    case SCR_SLOTS:    handleSlots(eA, eB, eP); break;
-    case SCR_SETTINGS: handleSettings(eA, eB, eP); break;
-    case SCR_PRESETS:  handlePresets(eA, eB, eP); break;
+    case SCR_MENU:     handleMenu(eB, eA, eP); break;
+    case SCR_SLOTS:    handleSlots(eB, eA, eP); break;
+    case SCR_CLOCK:    handleClock(eB, eA, eP); break;
+    case SCR_SETTINGS: handleSettings(eB, eA, eP); break;
+    case SCR_PRESETS:  handlePresets(eB, eA, eP); break;
   }
 
   // *** IR CAPTURE — only resume() after a successful decode ***
