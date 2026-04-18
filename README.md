@@ -1,177 +1,61 @@
-# first project kinda nervous
+# 📡 Universal IR Remote & Utility Hub
 
-Record IR signals from any remote control and replay them on demand.  
-Built for **M5StickC Plus 2**.
+[![PlatformIO](https://img.shields.io/badge/PlatformIO-Compatible-orange.svg)](https://platformio.org/)
+[![Hardware](https://img.shields.io/badge/Hardware-M5StickC%20Plus%202-red.svg)](https://shop.m5stack.com/products/m5stickc-plus2-esp32-mini-iot-development-kit)
+[![Framework](https://img.shields.io/badge/Framework-Arduino%20%2F%20ESP32-blue.svg)](https://www.arduino.cc/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
----
-
-## What You Need to Buy
-
-### 1. M5StickC Plus 2 (the main device)
-- **Price:** ~$20
-- **Where:** [M5Stack Official Store](https://shop.m5stack.com/products/m5stickc-plus2-esp32-mini-iot-development-kit), AliExpress, Amazon
-- This is the brain — ESP32 microcontroller with a 240×135 LCD screen, two buttons, built-in battery, and a **built-in IR transmitter LED** (GPIO 19).
-
-### 2. IR Receiver Module (required for recording signals)
-The M5StickC Plus 2 can **send** IR but has **no built-in IR receiver**. You must add one externally.
-
-**Option A — Plug & Play (recommended):**
-- **M5Stack Mini Infrared Emitter & Receiver Unit (SKU: U002)** — ~$4
-- Connects directly to the Grove Port A on the M5StickC Plus 2 with a Grove cable (included)
-- No soldering, no wiring
-
-**Option B — DIY (cheaper):**
-- **VS1838B** or **TSOP38238** IR receiver module — ~$1
-- 3× female-to-female jumper wires — ~$1
-
-### 3. USB-C Cable (for flashing & charging)
-- Any USB-C data cable (not charge-only)
+A high-performance, protocol-aware Infrared (IR) remote recorder and utility system designed for the **M5StickC Plus 2**. This project transforms an ESP32-based handheld into a robust tool capable of capturing, storing, and replaying IR signals for a wide variety of consumer electronics.
 
 ---
 
-## Wiring (Option B — DIY IR Receiver)
+## 🚀 Key Features
 
-Connect the IR receiver to the **Grove Port A** connector on the M5StickC Plus 2:
+### 📡 IR Command Management
+- **Protocol-Aware Capture**: Supports 50+ IR protocols including NEC, Sony, Samsung, RC5, RC6, LG, and Panasonic.
+- **20 Persistent Storage Slots**: Record and categorize signals across a paged interface (10 slots per page).
+- **Non-Volatile Storage (NVS)**: All captured signals and user settings are stored in flash memory, persisting across reboots.
+- **TV Preset Database**: Includes a built-in library of common IR codes for major television brands for instant deployment.
+- **Signal Optimization**: Configurable repeat bursts (1–50×) ensuring maximum reliability across different receiver sensitivities.
 
-| IR Receiver Pin | M5StickC Plus 2     | Wire Color (Grove) |
-|-----------------|----------------------|---------------------|
-| VCC             | 5V                   | Red                 |
-| GND             | GND                  | Black               |
-| OUT / Signal    | GPIO 33              | Yellow              |
-
-> If using the M5Stack IR Unit (Option A), just plug the Grove cable in — no wiring needed.
-
----
-
-## Features
-
-- **20 IR signal storage slots** — record and store up to 20 remote signals (paged view, 10 per page)
-- **NVS persistence** — all settings and recorded IR signals survive reboots (saved to flash)
-- **Main menu** — new hub screen with IR Remote, Clock, and Settings entries
-- **Full-screen clock** — large time display with seconds, date, day of week, battery, and adjustable hour/minute offset
-- **TV presets database** — load pre-built IR codes for popular TV brands straight into slots
-- **Protocol-aware sending** — supports NEC, Sony, Samsung, RC5, RC6, LG, Panasonic, and 50+ more
-- **Strong signal** — sends 50 repeat bursts by default (configurable 1–50×) for maximum reliability
-- **4 color themes** — Purple, Green, Blue, Red — changeable in Settings
-- **Clock & date** — syncs via WiFi/NTP on boot (optional), shown on status bar with adjustable offset
-- **Battery indicator** — shown on status bar
-- **Welcome screen** — "ROGAL" branded splash with battery, time and date
-- **Auto power-off** — configurable timeout (0–30 min)
-- **Clean button handling** — no double-fire, short press on release, long press on threshold
+### 🛠️ Multi-Utility Hub
+- **Dynamic Main Menu**: Centralized navigation for IR Remote, Clock, and System Settings.
+- **Feature-Rich Clock**: Large format time/date display with NTP synchronization, battery telemetry, and manual timezone offsets.
+- **Advanced Power Management**: Configurable auto power-off (0–30 min) to preserve battery life during portable use.
+- **Customizable UI**: Four built-in color themes (Purple, Green, Blue, Red) with high-contrast UI elements for the 240×135 LCD.
 
 ---
 
-## Controls
+## ⚙️ Hardware Architecture
 
-### Main Menu
-
-| Button        | Action                          |
-|---------------|---------------------------------|
-| A short       | Move selection up                |
-| B short       | Select highlighted item          |
-| P (power)     | Move selection down              |
-
-### Slots Screen (IR Remote)
-
-| Button        | Action                                     |
-|---------------|--------------------------------------------|
-| B short       | Previous slot                              |
-| B hold        | Back to Main Menu                          |
-| A short       | **Send** (if stored) / **Record** (if empty) |
-| P short       | Next slot                                  |
-| A or B (while recording) | Cancel recording                |
-
-### Clock Screen
-
-| Button        | Action                          |
-|---------------|---------------------------------|
-| B short       | Toggle hour/minute edit mode     |
-| B hold        | Back to Main Menu                |
-| A short       | Decrease offset (hour or minute) |
-| P short       | Increase offset (hour or minute) |
-
-### Settings Screen
-
-| Button        | Action                          |
-|---------------|---------------------------------|
-| B short       | Decrease selected value          |
-| A short       | Increase selected value          |
-| A hold        | Back to Main Menu                |
-| P short       | Next setting row                 |
-
-**Settings available:**
-- **Repeats** (1–50×) — how many times to send the signal per press
-- **Auto-Off** (0–30 min) — idle timeout before power-off (0 = never)
-- **Theme** — Purple / Green / Blue / Red
-- **Clock Offset** — adjustable hour offset (−12 to +12) for the clock display
-- **TV Presets** — load pre-built IR codes for popular TV brands
+Built for the **M5StickC Plus 2** (ESP32-S3), leveraging:
+- **Built-in IR Transmitter**: GPIO 19
+- **LCD Screen**: ST7789v2 Driver
+- **User Inputs**: Three-button interface with optimized debouncing and long-press detection.
+- **Peripheral Support**: Compatible with the M5Stack IR Receiver Unit (Grove Port A / GPIO 33) or DIY VS1838B sensors.
 
 ---
 
-## How to Flash
+## 🏗️ Technical Implementation
 
-### Prerequisites
-- [VS Code](https://code.visualstudio.com/) with [PlatformIO extension](https://platformio.org/install/ide?install=vscode)
-- Or PlatformIO CLI: `pip install platformio`
+### Engineering Highlights
+- **Interrupt-Driven Logic**: Clean button handling prevents double-firing and supports short-press/long-press thresholds.
+- **Efficient Memory Usage**: Optimized NVS structures for storing RAW and protocol-based IR data.
+- **Structured C++**: A modular `main.cpp` (40KB+) implementation managing complex state transitions between utilities.
 
-### Steps
-1. Clone this repo
-2. Connect M5StickC Plus 2 via USB-C
-3. *(Optional)* Edit `WIFI_SSID` and `WIFI_PASS` in `src/main.cpp` for clock/date sync
-4. Flash:
-   ```
+---
+
+## 📥 Getting Started
+
+1. Install [PlatformIO](https://platformio.org/install).
+2. Clone the repository.
+3. Connect your M5StickC Plus 2 via USB-C.
+4. Build and upload the project using the PlatformIO IDE or CLI:
+   ```bash
    pio run --target upload
    ```
-5. The device will reboot and show the ROGAL welcome screen
 
 ---
 
-## How to Use
-
-1. **Power on** — welcome screen shows battery %, time, and date (if WiFi configured)
-2. **Press any button** to enter the Main Menu
-3. Select **IR Remote** to open the slots view
-4. **Navigate** to an empty slot with B (previous) / P (next)
-5. **Press A** on an empty slot to start recording
-6. **Aim your remote** at the IR receiver and press a button on the remote
-7. The signal is captured, decoded, and stored in flash — screen shows "SAVED"
-8. **Press A** on a stored slot to replay the signal (IR LED fires 50× by default)
-9. Select **Clock** from the menu for a full-screen clock with adjustable offset
-10. Select **Settings** to customize repeats, auto-off, theme, clock offset, or load TV presets
-
-All settings and recorded IR signals are **saved to flash** and persist across reboots.
-
----
-
-## Project Structure
-
-```
-├── src/
-│   └── main.cpp          # All firmware code
-├── platformio.ini         # PlatformIO build config
-├── .gitignore
-└── README.md
-```
-
----
-
-## Technical Details
-
-- **MCU:** ESP32-PICO-V3-02 (240 MHz dual-core, 320 KB RAM, 4 MB Flash)
-- **Display:** 240×135 px TFT LCD (landscape mode)
-- **IR TX:** GPIO 19 (built-in LED, 38 kHz carrier)
-- **IR RX:** GPIO 33 (external receiver on Grove Port A)
-- **IR Library:** IRremoteESP8266 v2.9.0
-- **Storage:** ESP32 NVS (Preferences) — settings and IR signals persist across reboots
-- **Timezone:** CET/CEST via POSIX TZ string + NTP
-
----
-
-## License
-
-Private project.
-
-## Libraries Used
-- M5StickCPlus2 — Device support
-- IRremoteESP8266 — IR sending and receiving
-- Preferences (ESP32 NVS) — Persistent settings and signal storage
+## 📜 License
+This project is licensed under the MIT License.
