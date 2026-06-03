@@ -1,6 +1,10 @@
-# first project kinda nervous
+# Rogal — M5StickC Plus 2 IR Remote
 
-Record IR signals from any remote control and replay them on demand.  
+> My first embedded project — small, scary at first, and surprisingly fun once
+> the LED started blinking back on cue. Record IR signals from any remote and
+> replay them on demand.
+
+Record IR signals from any remote control and replay them on demand.
 Built for **M5StickC Plus 2**.
 
 ---

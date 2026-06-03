@@ -1,17 +1,29 @@
 // ============================================================
 //  ROGAL — IR Signal Manager for M5StickC Plus 2
-//  https://github.com/oliwi  (private repo)
+//  https://github.com/rogal01/m5stick-ir-project
 // ============================================================
 //
+//  This is my first real embedded project — a pocket-sized IR
+//  remote that can learn and replay signals from any TV, AC, or
+//  audio remote you can point at it. Twenty slots, persistent
+//  across reboots, with a friendly little menu UI.
+//
 //  HARDWARE REQUIRED:
-//    1. M5StickC Plus 2
+//    1. M5StickC Plus 2  (ESP32-PICO-V3-02, 240×135 TFT, 2 buttons)
 //    2. External IR receiver (VS1838B / TSOP38238 / M5Stack IR Unit)
 //       Wiring: VCC→5V, GND→GND, OUT→GPIO 33 (Grove Port A)
 //
-//  The M5StickC Plus 2 has a built-in IR transmitter LED (GPIO 19)
-//  but NO built-in IR receiver — you must add one externally.
+//  The M5StickC Plus 2 ships with a built-in IR *transmitter* LED
+//  on GPIO 19, but no receiver — so the recorder side needs an
+//  external module. The Grove port keeps things solder-free.
 //
-//  Set WiFi credentials below for clock/date sync (optional).
+//  CONFIG:
+//    - Set WIFI_SSID / WIFI_PASS below for NTP clock sync (optional).
+//    - All settings (theme, repeats, auto-off, clock offset) and the
+//      20 recorded IR slots are persisted to NVS flash, so a power
+//      cycle won't lose anything.
+//
+//  Build with PlatformIO: `pio run --target upload`.
 // ============================================================
 
 #include <M5StickCPlus2.h>
