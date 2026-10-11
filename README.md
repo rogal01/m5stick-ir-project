@@ -1,61 +1,35 @@
-# 📡 Universal IR Remote & Utility Hub
+# 📡 Universal IR Remote (M5StickC Plus 2)
 
-[![PlatformIO](https://img.shields.io/badge/PlatformIO-Compatible-orange.svg)](https://platformio.org/)
-[![Hardware](https://img.shields.io/badge/Hardware-M5StickC%20Plus%202-red.svg)](https://shop.m5stack.com/products/m5stickc-plus2-esp32-mini-iot-development-kit)
-[![Framework](https://img.shields.io/badge/Framework-Arduino%20%2F%20ESP32-blue.svg)](https://www.arduino.cc/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-
-A high-performance, protocol-aware Infrared (IR) remote recorder and utility system designed for the **M5StickC Plus 2**. This project transforms an ESP32-based handheld into a robust tool capable of capturing, storing, and replaying IR signals for a wide variety of consumer electronics.
+I built this because I wanted a tiny device that could control basically any TV or remote-controlled gadget I have. It's based on the **M5StickC Plus 2** and can record signals from a real remote and play them back whenever I want.
 
 ---
 
-## 🚀 Key Features
+## 🚀 Cool Features
 
-### 📡 IR Command Management
-- **Protocol-Aware Capture**: Supports 50+ IR protocols including NEC, Sony, Samsung, RC5, RC6, LG, and Panasonic.
-- **20 Persistent Storage Slots**: Record and categorize signals across a paged interface (10 slots per page).
-- **Non-Volatile Storage (NVS)**: All captured signals and user settings are stored in flash memory, persisting across reboots.
-- **TV Preset Database**: Includes a built-in library of common IR codes for major television brands for instant deployment.
-- **Signal Optimization**: Configurable repeat bursts (1–50×) ensuring maximum reliability across different receiver sensitivities.
-
-### 🛠️ Multi-Utility Hub
-- **Dynamic Main Menu**: Centralized navigation for IR Remote, Clock, and System Settings.
-- **Feature-Rich Clock**: Large format time/date display with NTP synchronization, battery telemetry, and manual timezone offsets.
-- **Advanced Power Management**: Configurable auto power-off (0–30 min) to preserve battery life during portable use.
-- **Customizable UI**: Four built-in color themes (Purple, Green, Blue, Red) with high-contrast UI elements for the 240×135 LCD.
+- **20 Slots**: You can save up to 20 different remote signals in its memory.
+- **NVS Saving**: It saves everything to the flash memory, so even if the battery dies, it remembers your remotes.
+- **TV Presets**: I added a built-in database of codes for common TV brands so you don't even have to record them yourself.
+- **Clock Utility**: It's also a full-screen clock that syncs over WiFi using NTP.
+- **Themes**: You can switch between Purple, Green, Blue, and Red themes in the settings.
 
 ---
 
-## ⚙️ Hardware Architecture
+## 🛠️ Hardware
 
-Built for the **M5StickC Plus 2** (ESP32-S3), leveraging:
-- **Built-in IR Transmitter**: GPIO 19
-- **LCD Screen**: ST7789v2 Driver
-- **User Inputs**: Three-button interface with optimized debouncing and long-press detection.
-- **Peripheral Support**: Compatible with the M5Stack IR Receiver Unit (Grove Port A / GPIO 33) or DIY VS1838B sensors.
+- **Brain**: M5StickC Plus 2 (ESP32-S3)
+- **IR Receiver**: I used the external M5Stack IR Unit plugged into Port A.
+- **IR Transmitter**: Uses the one built right into the stick.
 
 ---
 
-## 🏗️ Technical Implementation
+## 🏗️ How I made it
 
-### Engineering Highlights
-- **Interrupt-Driven Logic**: Clean button handling prevents double-firing and supports short-press/long-press thresholds.
-- **Efficient Memory Usage**: Optimized NVS structures for storing RAW and protocol-based IR data.
-- **Structured C++**: A modular `main.cpp` (40KB+) implementation managing complex state transitions between utilities.
+I used **PlatformIO** and C++ to write this. The code handles everything from low-level IR pulse timing to the paged menu system on the LCD screen. I spent a lot of time making sure the buttons don't "double-click" and that you can hold them down for extra functions.
 
 ---
 
-## 📥 Getting Started
+## 📥 How to use it
 
-1. Install [PlatformIO](https://platformio.org/install).
-2. Clone the repository.
-3. Connect your M5StickC Plus 2 via USB-C.
-4. Build and upload the project using the PlatformIO IDE or CLI:
-   ```bash
-   pio run --target upload
-   ```
-
----
-
-## 📜 License
-This project is licensed under the MIT License.
+1. Get **PlatformIO**.
+2. Connect your M5Stick via USB-C.
+3. Upload the code: `pio run --target upload`
